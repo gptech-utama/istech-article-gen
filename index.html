@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PT Istech Utama – Artikel Generator</title>
+  <style>
+    body { font-family: sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+    .field { margin-bottom: 1rem; }
+    label { display: block; font-weight: bold; margin-bottom: .5rem; }
+    input, select, textarea { width: 100%; padding: .5rem; font-size: 1rem; }
+    button { padding: .75rem 1.5rem; font-size: 1rem; cursor: pointer; }
+    .toast { position: fixed; bottom: 1rem; right: 1rem; background: #333; color: #fff; padding: .75rem 1rem; border-radius: 4px; opacity: .9; }
+    .card { border: 1px solid #ddd; padding: 1rem; margin: 1rem 0; border-radius: 4px; }
+    .card h4 { margin-top: 0; }
+  </style>
+</head>
+<body>
+  <h1>Artikel/Blog Generator PT Istech Utama</h1>
+  <div id="form">
+    <div class="field"><label>Judul Konten</label><input id="title" /></div>
+    <div class="field"><label>Funnel</label><select id="funnel"><option value="Awareness">Awareness</option><option value="Conversion">Conversion</option></select></div>
+    <div class="field"><label>Kategori Konten</label><input id="category" /></div>
+    <div class="field"><label>Keyword Utama</label><input id="keyword" /></div>
+    <div class="field"><label>Long-Tail Keyword</label><input id="longtail" /></div>
+    <div class="field"><label>Search Intent</label><input id="intent" /></div>
+    <div class="field"><label>CTA / Aksi</label><input id="cta" /></div>
+    <div class="field"><label>Tone</label>
+      <select id="tone">
+        <option value="Semi-formal">Semi-formal</option>
+        <option value="Edukatif Ringan">Edukatif Ringan</option>
+        <option value="Full Teknis">Full Teknis</option>
+      </select>
+    </div>
+    <button id="generate">Buatkan Artikel Sekarang!</button>
+  </div>
+
+  <div id="output"></div>
+
+  <!-- Library untuk export .docx & PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/docx/7.5.0/docx.browser.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <script>
+    // Fungsi toast
+    const showToast = msg => {
+      const t = document.createElement('div');
+      t.className = 'toast';
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 3000);
+    };
+
+    document.getElementById('generate').onclick = async () => {
+      const data = {
+        title: title.value.trim(),
+        funnel: funnel.value,
+        category: category.value.trim(),
+        keyword: keyword.value.trim(),
+        longtail: longtail.value.trim(),
+        intent: intent.value.trim(),
+        cta: cta.value.trim(),
+        tone: tone.value
+      };
+      // Validasi
+      for (let k in data) {
+        if (!data[k]) {
+          return showToast('Semua field harus diisi');
+        }
+      }
+
+      showToast('Memproses...');
+      try {
+        const res = await fetch('/.netlify/functions/proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const json = await res.json();
+        renderOutput(json);
+        showToast('Selesai!');
+      } catch (e) {
+        console.error(e);
+        showToast('Gagal memanggil API');
+      }
+    };
+
+    function renderOutput({ metaTitle, metaDesc, slug, article, prompts }) {
+      const out = document.getElementById('output');
+      out.innerHTML = '';
+      // helper buat kartu
+      const makeCard = (title, content) => {
+        const c = document.createElement('div');
+        c.className = 'card';
+        c.innerHTML = `<h4>${title}</h4><pre>${content}</pre><button>Salin ${title}</button>`;
+        c.querySelector('button').onclick = () => navigator.clipboard.writeText(content);
+        return c;
+      };
+      out.append(makeCard('Meta Title', metaTitle));
+      out.append(makeCard('Meta Description', metaDesc));
+      out.append(makeCard('URL Slug', slug));
+      out.append(makeCard('Artikel', article));
+      prompts.forEach((p, i) => out.append(makeCard(`Prompt Gambar ${i+1}`, p)));
+
+      // tombol export
+      const btnWord = document.createElement('button');
+      btnWord.textContent = 'Export ke Word';
+      btnWord.onclick = () => exportDocx(metaTitle, article);
+      out.append(btnWord);
+
+      const btnPDF = document.createElement('button');
+      btnPDF.textContent = 'Export ke PDF';
+      btnPDF.onclick = () => exportPDF(metaTitle, article);
+      out.append(btnPDF);
+    }
+
+    // Export .docx
+    async function exportDocx(title, content) {
+      const { Document, Packer, Paragraph, TextRun } = docx;
+      const doc = new Document({
+        sections: [{
+          children: [
+            new Paragraph({ children: [ new TextRun({ text: title, bold: true, size: 32 }) ] }),
+            ...content.split('\n').map(line => new Paragraph(line))
+          ]
+        }]
+      });
+      const blob = await Packer.toBlob(doc);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = title + '.docx';
+      a.click();
+    }
+
+    // Export PDF
+    function exportPDF(title, content) {
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF();
+      pdf.setFontSize(16);
+      pdf.text(title, 10, 20);
+      pdf.setFontSize(12);
+      pdf.text(pdf.splitTextToSize(content, 180), 10, 30);
+      pdf.save(title + '.pdf');
+    }
+  </script>
+</body>
+</html>
